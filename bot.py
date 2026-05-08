@@ -19,7 +19,7 @@ from telegram.ext import (
 )
 
 # ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
-BOT_TOKEN  = "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2L1Dg4NLe0"
+BOT_TOKEN  = "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2LlDg4NLe0"
 MANAGER_ID = 1338569085
 HISTORY_FILE = "reviews.json"
 
