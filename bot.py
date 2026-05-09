@@ -1,3 +1,4 @@
+
 """
 Telegram бот для сбора отзывов о сотрудниках
 ==========================================
@@ -8,8 +9,6 @@ Telegram бот для сбора отзывов о сотрудниках
     python bot.py
 """
 
-
-
 import os, json, logging, asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -18,8 +17,8 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
-BOT_TOKEN   = "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2LlDg4NLe0"
-MANAGER_ID  = 1338569085
+BOT_TOKEN    = "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2LlDg4NLe0"
+MANAGER_ID   = 1338569085
 HISTORY_FILE = "reviews.json"
 
 # ─── ГРУППЫ И СОТРУДНИКИ ──────────────────────────────────────────────────────
@@ -48,6 +47,7 @@ SELECT_GROUP, SELECT_EMPLOYEE, SELECT_RATING, GET_COMMENT = range(4)
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+
 def save_review(data: dict):
     reviews = []
     if os.path.exists(HISTORY_FILE):
@@ -57,8 +57,10 @@ def save_review(data: dict):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(reviews, f, ensure_ascii=False, indent=2)
 
+
 def stars(n: int) -> str:
     return "⭐" * n + "☆" * (5 - n)
+
 
 # ─── /start → выбор группы ────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,6 +74,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return SELECT_GROUP
+
 
 # ─── Выбор группы → показать сотрудников ──────────────────────────────────────
 async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,6 +100,7 @@ async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return SELECT_EMPLOYEE
+
 
 # ─── Выбор сотрудника → оценка ────────────────────────────────────────────────
 async def select_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,6 +134,7 @@ async def select_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return SELECT_RATING
 
+
 # ─── Выбор оценки → комментарий ───────────────────────────────────────────────
 async def select_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -162,6 +167,7 @@ async def select_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return GET_COMMENT
 
+
 # ─── Текстовый комментарий ────────────────────────────────────────────────────
 async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     employee = context.user_data.get("employee", "Неизвестно")
@@ -190,6 +196,7 @@ async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     asyncio.create_task(_auto_restart(update, context, msg.message_id))
     return ConversationHandler.END
+
 
 # ─── Голосовой комментарий ────────────────────────────────────────────────────
 async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,6 +231,7 @@ async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_auto_restart(update, context, msg.message_id))
     return ConversationHandler.END
 
+
 # ─── Авто-рестарт через 15 секунд ────────────────────────────────────────────
 async def _auto_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, old_msg_id: int):
     await asyncio.sleep(15)
@@ -245,6 +253,8 @@ async def _auto_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, old_
         text="🔄 *Новый отзыв?*\n\nВыберите отдел:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
+    )  # ← эта скобка была пропущена в оригинале
+
 
 # ─── История ──────────────────────────────────────────────────────────────────
 async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -262,16 +272,21 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "📋 *Последние отзывы:*\n\n"
     for r in reviews[-10:][::-1]:
-        text += f"🏢 {r.get('group','')} | 👤 {r['employee']} — {stars(r['rating'])}\n💬 {r['comment']}\n🕐 {r['date']}\n{'─'*20}\n"
+        text += (
+            f"🏢 {r.get('group', '')} | 👤 {r['employee']} — {stars(r['rating'])}\n"
+            f"💬 {r['comment']}\n🕐 {r['date']}\n{'─' * 20}\n"
+        )
 
     await query.edit_message_text(text, parse_mode="Markdown")
     return ConversationHandler.END
+
 
 # ─── Отмена ───────────────────────────────────────────────────────────────────
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отменено. /start — начать заново.")
     context.user_data.clear()
     return ConversationHandler.END
+
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
@@ -293,5 +308,6 @@ def main():
     print("✅ Бот запущен!")
     app.run_polling()
 
-if name == "__main__":
+
+if __name__ == "__main__":
     main()
