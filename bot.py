@@ -1,15 +1,5 @@
 
-"""
-Telegram бот для сбора отзывов о сотрудниках
-==========================================
-Установка:
-    pip install python-telegram-bot==20.7
-
-Запуск:
-    python bot.py
-"""
-
-import os, json, logging, asyncio
+import os, logging, asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -17,142 +7,144 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
-BOT_TOKEN    = "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2LlDg4NLe0"
-MANAGER_ID   = 1338569085
-HISTORY_FILE = "reviews.json"
+BOT_TOKEN  = os.environ.get("BOT_TOKEN", "8697673336:AAFXrgVPvkrNR4SsRacgUwK-D2LlDg4NLe0")
+MANAGER_ID = int(os.environ.get("MANAGER_ID", "1338569085"))
+BRANCH     = "Аса"
 
-# ─── ГРУППЫ И СОТРУДНИКИ ──────────────────────────────────────────────────────
-GROUPS = {
-    "Аскарова": [
-        "Узакбаев Айбол",
-        "Узакбаев Байбол",
-        "Рахметулла Нурсултан",
-        "Копбаев Елжан",
-    ],
-    "Сулиманова": [
-        "Бикоров Габит",
-        "Бакиров Шакен",
-        "Махамбет Нуржас",
-        "Рыстай Уласкан",
-        "Райф Арсен",
-    ],
-    "Аса": [
-        "Узакбаев Ербол",
-        "Жандос Нурзат",
-        "Дуанбай Медерхан",
-    ],
-}
+EMPLOYEES = [
+    "Узакбаев Ербол",
+    "Дуанбай Медерхан",
+    "Жандос Нурзат",
+    
+]
 
-SELECT_GROUP, SELECT_EMPLOYEE, SELECT_RATING, GET_COMMENT = range(4)
+TIMEOUT_SECONDS = 15
+SELECT_EMPLOYEE, SELECT_RATING, GET_COMMENT = range(3)
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
-
-
-def save_review(data: dict):
-    reviews = []
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            reviews = json.load(f)
-    reviews.append(data)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(reviews, f, ensure_ascii=False, indent=2)
 
 
 def stars(n: int) -> str:
     return "⭐" * n + "☆" * (5 - n)
 
 
-# ─── /start → выбор группы ────────────────────────────────────────────────────
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton(f"🏢 {group}", callback_data=f"grp_{group}")]
-        for group in GROUPS
-    ]
-    keyboard.append([InlineKeyboardButton("📋 История отзывов", callback_data="history")])
-    await update.message.reply_text(
-        "👋 Добро пожаловать!\n\nВыберите отдел:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return SELECT_GROUP
-
-
-# ─── Выбор группы → показать сотрудников ──────────────────────────────────────
-async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "history":
-        return await show_history(update, context)
-
-    group = query.data.replace("grp_", "")
-    context.user_data["group"] = group
-    employees = GROUPS[group]
-
-    keyboard = [
+def employee_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton(f"👤 {emp}", callback_data=f"emp_{i}")]
-        for i, emp in enumerate(employees)
-    ]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_groups")])
+        for i, emp in enumerate(EMPLOYEES)
+    ])
 
-    await query.edit_message_text(
-        f"🏢 Отдел: *{group}*\n\nВыберите сотрудника:",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+
+def cancel_timer(context):
+    task = context.user_data.pop("_timer", None)
+    if task and not task.done():
+        task.cancel()
+
+
+def start_timer(update, context, msg_id):
+    cancel_timer(context)
+    context.user_data["_timer"] = asyncio.create_task(
+        _timeout_reset(update, context, msg_id)
     )
+
+
+async def _timeout_reset(update, context, msg_id):
+    await asyncio.sleep(TIMEOUT_SECONDS)
+    try:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+    except Exception:
+        pass
+    context.user_data.clear()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"⏱ Время вышло.\n\n👋 Филиал: *{BRANCH}*\n\nВыберите сотрудника:",
+        parse_mode="Markdown",
+        reply_markup=employee_keyboard()
+    )
+
+
+async def show_main_menu(update, context):
+    """Показывает главное меню — используется везде"""
+    cancel_timer(context)
+    context.user_data.clear()
+    if update.message:
+        msg = await update.message.reply_text(
+            f"👋 Филиал: *{BRANCH}*\n\nВыберите сотрудника:",
+            parse_mode="Markdown",
+            reply_markup=employee_keyboard()
+        )
+    else:
+        msg = await update.callback_query.edit_message_text(
+            f"👋 Филиал: *{BRANCH}*\n\nВыберите сотрудника:",
+            parse_mode="Markdown",
+            reply_markup=employee_keyboard()
+        )
+    start_timer(update, context, msg.message_id)
     return SELECT_EMPLOYEE
 
 
-# ─── Выбор сотрудника → оценка ────────────────────────────────────────────────
+# ─── /start ───────────────────────────────────────────────────────────────────
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await show_main_menu(update, context)
+
+
+# ─── Ловим нажатия на кнопки сотрудников ВНЕ диалога (после авто-рестарта) ───
+async def global_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data.startswith("emp_"):
+        # Запускаем диалог заново
+        idx = int(query.data.replace("emp_", ""))
+        employee = EMPLOYEES[idx]
+        context.user_data.clear()
+        context.user_data["employee"] = employee
+
+        keyboard = [[InlineKeyboardButton(stars(i), callback_data=f"rate_{i}")] for i in range(1, 6)]
+        keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
+
+        await query.edit_message_text(
+            f"👤 Сотрудник: *{employee}*\n\nПоставьте оценку:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        start_timer(update, context, query.message.message_id)
+
+
+# ─── Выбор сотрудника ─────────────────────────────────────────────────────────
 async def select_employee(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    cancel_timer(context)
 
-    if query.data == "back_groups":
-        keyboard = [
-            [InlineKeyboardButton(f"🏢 {group}", callback_data=f"grp_{group}")]
-            for group in GROUPS
-        ]
-        keyboard.append([InlineKeyboardButton("📋 История отзывов", callback_data="history")])
-        await query.edit_message_text(
-            "Выберите отдел:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return SELECT_GROUP
-
-    group = context.user_data["group"]
     idx = int(query.data.replace("emp_", ""))
-    employee = GROUPS[group][idx]
+    employee = EMPLOYEES[idx]
     context.user_data["employee"] = employee
 
     keyboard = [[InlineKeyboardButton(stars(i), callback_data=f"rate_{i}")] for i in range(1, 6)]
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_employees")])
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
 
     await query.edit_message_text(
         f"👤 Сотрудник: *{employee}*\n\nПоставьте оценку:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+    start_timer(update, context, query.message.message_id)
     return SELECT_RATING
 
 
-# ─── Выбор оценки → комментарий ───────────────────────────────────────────────
+# ─── Выбор оценки ─────────────────────────────────────────────────────────────
 async def select_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    cancel_timer(context)
 
-    if query.data == "back_employees":
-        group = context.user_data["group"]
-        employees = GROUPS[group]
-        keyboard = [
-            [InlineKeyboardButton(f"👤 {emp}", callback_data=f"emp_{i}")]
-            for i, emp in enumerate(employees)
-        ]
-        keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_groups")])
-        await query.edit_message_text(
-            f"🏢 Отдел: *{group}*\n\nВыберите сотрудника:",
+    if query.data == "back":
+        msg = await query.edit_message_text(
+            f"👋 Филиал: *{BRANCH}*\n\nВыберите сотрудника:",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=employee_keyboard()
         )
+        start_timer(update, context, query.message.message_id)
         return SELECT_EMPLOYEE
 
     rating = int(query.data.replace("rate_", ""))
@@ -165,34 +157,38 @@ async def select_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"_(Если не хотите — напишите «-»)_",
         parse_mode="Markdown"
     )
+    start_timer(update, context, query.message.message_id)
     return GET_COMMENT
 
 
 # ─── Текстовый комментарий ────────────────────────────────────────────────────
 async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cancel_timer(context)
     employee = context.user_data.get("employee", "Неизвестно")
     rating   = context.user_data.get("rating", 0)
-    group    = context.user_data.get("group", "")
     username = update.effective_user.username or "аноним"
     now      = datetime.now().strftime("%d.%m.%Y %H:%M")
     comment  = update.message.text or ""
 
-    save_review({"date": now, "group": group, "employee": employee,
-                 "rating": rating, "comment": comment, "type": "text", "from": username})
-
     await context.bot.send_message(
         chat_id=MANAGER_ID,
-        text=f"📝 *Новый отзыв!*\n\n🏢 Отдел: *{group}*\n👤 Сотрудник: *{employee}*\n"
-             f"⭐ Оценка: {stars(rating)} ({rating}/5)\n💬 {comment}\n🕐 {now}\n👥 @{username}",
+        text=(
+            f"📝 *Новый отзыв!*\n\n"
+            f"🏢 Филиал: *{BRANCH}*\n"
+            f"👤 Сотрудник: *{employee}*\n"
+            f"⭐ Оценка: {stars(rating)} ({rating}/5)\n"
+            f"💬 {comment}\n"
+            f"🕐 {now}\n"
+            f"👥 @{username}"
+        ),
         parse_mode="Markdown"
     )
 
     msg = await update.message.reply_text(
         f"✅ Спасибо! *{employee}* получил {stars(rating)}\n\n"
-        f"_Бот перезапустится через 15 секунд..._",
+        f"_Меню появится через 15 секунд..._",
         parse_mode="Markdown"
     )
-
     context.user_data.clear()
     asyncio.create_task(_auto_restart(update, context, msg.message_id))
     return ConversationHandler.END
@@ -200,19 +196,22 @@ async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Голосовой комментарий ────────────────────────────────────────────────────
 async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cancel_timer(context)
     employee = context.user_data.get("employee", "Неизвестно")
     rating   = context.user_data.get("rating", 0)
-    group    = context.user_data.get("group", "")
     username = update.effective_user.username or "аноним"
     now      = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-    save_review({"date": now, "group": group, "employee": employee,
-                 "rating": rating, "comment": "[голосовое]", "type": "voice", "from": username})
-
     await context.bot.send_message(
         chat_id=MANAGER_ID,
-        text=f"🎤 *Голосовой отзыв!*\n\n🏢 {group}\n👤 *{employee}*\n"
-             f"⭐ {stars(rating)} ({rating}/5)\n🕐 {now}\n👥 @{username}",
+        text=(
+            f"🎤 *Голосовой отзыв!*\n\n"
+            f"🏢 Филиал: *{BRANCH}*\n"
+            f"👤 *{employee}*\n"
+            f"⭐ {stars(rating)} ({rating}/5)\n"
+            f"🕐 {now}\n"
+            f"👥 @{username}"
+        ),
         parse_mode="Markdown"
     )
     await context.bot.forward_message(
@@ -223,89 +222,66 @@ async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text(
         f"✅ Голосовой отзыв принят!\n*{employee}* — {stars(rating)}\n\n"
-        f"_Бот перезапустится через 15 секунд..._",
+        f"_Меню появится через 15 секунд..._",
         parse_mode="Markdown"
     )
-
     context.user_data.clear()
     asyncio.create_task(_auto_restart(update, context, msg.message_id))
     return ConversationHandler.END
 
 
-# ─── Авто-рестарт через 15 секунд ────────────────────────────────────────────
-async def _auto_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, old_msg_id: int):
+# ─── Авто-рестарт после отзыва ────────────────────────────────────────────────
+async def _auto_restart(update, context, old_msg_id):
     await asyncio.sleep(15)
     try:
-        await context.bot.delete_message(
-            chat_id=update.effective_chat.id,
-            message_id=old_msg_id
-        )
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=old_msg_id)
     except Exception:
         pass
-
-    keyboard = [
-        [InlineKeyboardButton(f"🏢 {group}", callback_data=f"grp_{group}")]
-        for group in GROUPS
-    ]
-    keyboard.append([InlineKeyboardButton("📋 История отзывов", callback_data="history")])
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🔄 *Новый отзыв?*\n\nВыберите отдел:",
+        text=f"🔄 *Новый отзыв?*\n\n👋 Филиал: *{BRANCH}*\n\nВыберите сотрудника:",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )  # ← эта скобка была пропущена в оригинале
-
-
-# ─── История ──────────────────────────────────────────────────────────────────
-async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if not os.path.exists(HISTORY_FILE):
-        await query.edit_message_text("📋 История пуста.")
-        return ConversationHandler.END
-
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        reviews = json.load(f)
-
-    if not reviews:
-        await query.edit_message_text("📋 История пуста.")
-        return ConversationHandler.END
-
-    text = "📋 *Последние отзывы:*\n\n"
-    for r in reviews[-10:][::-1]:
-        text += (
-            f"🏢 {r.get('group', '')} | 👤 {r['employee']} — {stars(r['rating'])}\n"
-            f"💬 {r['comment']}\n🕐 {r['date']}\n{'─' * 20}\n"
-        )
-
-    await query.edit_message_text(text, parse_mode="Markdown")
-    return ConversationHandler.END
+        reply_markup=employee_keyboard()
+    )
 
 
 # ─── Отмена ───────────────────────────────────────────────────────────────────
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Отменено. /start — начать заново.")
+    cancel_timer(context)
     context.user_data.clear()
+    await update.message.reply_text("Отменено. /start — начать заново.")
     return ConversationHandler.END
 
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+
     conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(select_employee, pattern="^emp_"),
+        ],
         states={
-            SELECT_GROUP:    [CallbackQueryHandler(select_group)],
-            SELECT_EMPLOYEE: [CallbackQueryHandler(select_employee)],
+            SELECT_EMPLOYEE: [CallbackQueryHandler(select_employee, pattern="^emp_")],
             SELECT_RATING:   [CallbackQueryHandler(select_rating)],
             GET_COMMENT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_comment),
                 MessageHandler(filters.VOICE, get_voice),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start),
+        ],
+        allow_reentry=True,
     )
+
     app.add_handler(conv)
-    print("✅ Бот запущен!")
+    # Глобальный обработчик — ловит нажатия после авто-рестарта
+    app.add_handler(CallbackQueryHandler(global_callback_handler))
+
+    print(f"✅ Бот {BRANCH} запущен!")
     app.run_polling()
 
 
