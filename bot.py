@@ -233,7 +233,7 @@ async def _auto_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, old_
             message_id=old_msg_id
         )
     except Exception:
-pass
+        pass
 
     keyboard = [
         [InlineKeyboardButton(f"🏢 {group}", callback_data=f"grp_{group}")]
@@ -245,7 +245,6 @@ pass
         text="🔄 *Новый отзыв?*\n\nВыберите отдел:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 # ─── История ──────────────────────────────────────────────────────────────────
 async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
