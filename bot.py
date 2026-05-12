@@ -18,7 +18,7 @@ EMPLOYEES = [
     
 ]
 
-TIMEOUT_SECONDS = 15
+TIMEOUT_SECONDS = 80
 SELECT_EMPLOYEE, SELECT_RATING, GET_COMMENT = range(3)
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
