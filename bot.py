@@ -186,7 +186,7 @@ async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text(
         f"✅ Спасибо! *{employee}* получил {stars(rating)}\n\n"
-        f"_Меню появится через 15 секунд..._",
+        f"_Меню появится через 80 секунд..._",
         parse_mode="Markdown"
     )
     context.user_data.clear()
@@ -222,7 +222,7 @@ async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text(
         f"✅ Голосовой отзыв принят!\n*{employee}* — {stars(rating)}\n\n"
-        f"_Меню появится через 15 секунд..._",
+        f"_Меню появится через 80 секунд..._",
         parse_mode="Markdown"
     )
     context.user_data.clear()
@@ -232,7 +232,7 @@ async def get_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── Авто-рестарт после отзыва ────────────────────────────────────────────────
 async def _auto_restart(update, context, old_msg_id):
-    await asyncio.sleep(15)
+    await asyncio.sleep(80)
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=old_msg_id)
     except Exception:
