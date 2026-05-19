@@ -1,4 +1,5 @@
 
+
 import os, logging, asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,6 +16,7 @@ EMPLOYEES = [
     "Узакбаев Ербол",
     "Дуанбай Медерхан",
     "Жандос Нурзат",
+]
 
 # Жалобы: первые 3 — быстрые (без комментария), последняя — с комментарием
 COMPLAINTS = [
